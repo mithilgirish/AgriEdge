@@ -20,6 +20,7 @@ export default function Navbar() {
     { href: '/dashboard', label: 'Dashboard' },
     { href: '/control', label: 'Control' },
     { href: '/log', label: 'Logs' },
+    {href: '/chatbot', label:"ChatBot"},
   ];
 
   const dropdownItems = [

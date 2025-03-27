@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { 
@@ -25,7 +25,7 @@ import {
 
 export default function DashboardPage() {
   const [pumpStatus, setPumpStatus] = useState(false);
-  const [isOnline, setIsOnline] = useState(true);
+  const isOnline = true; // Fixed value since setIsOnline was never used
 
   // Mock data
   const sensorData = [

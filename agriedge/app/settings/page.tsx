@@ -1,19 +1,23 @@
 "use client";
 
 import { useState } from 'react';
+import { useUser, useClerk } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from '@/components/ui/ToastProvider';
-import { LogOut, Save, User, Wifi } from 'lucide-react';
+import { LogOut, Save, Wifi } from 'lucide-react';
 
 export default function SettingsPage() {
   const { showToast } = useToast();
+  const { user } = useUser();
+  const { signOut } = useClerk();
+
   const [formData, setFormData] = useState({
-    name: 'John Doe',
-    email: 'john@example.com',
+    name: user?.fullName || '',
+    email: user?.primaryEmailAddress?.emailAddress || '',
     currentPassword: '',
     newPassword: '',
     confirmPassword: '',
@@ -24,30 +28,61 @@ export default function SettingsPage() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleProfileUpdate = (e: React.FormEvent) => {
+  const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    showToast('Profile updated successfully');
+    
+    try {
+      if (user) {
+        await user.update({
+          firstName: formData.name.split(' ')[0],
+          lastName: formData.name.split(' ').slice(1).join(' ')
+        });
+        showToast('Profile updated successfully');
+      }
+    } catch (error) {
+      showToast('Failed to update profile');
+      console.error(error);
+    }
   };
 
-  const handlePasswordChange = (e: React.FormEvent) => {
+  const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     if (formData.newPassword !== formData.confirmPassword) {
       showToast('Passwords do not match');
       return;
     }
-    showToast('Password updated successfully');
+
+    try {
+      // Note: This is a placeholder. Actual password change 
+      // would typically be handled through Clerk's methods
+      showToast('Password update functionality depends on Clerk configuration');
+    } catch (error) {
+      showToast('Failed to update password');
+      console.error(error);
+    }
   };
 
   const handleESPConfig = (e: React.FormEvent) => {
     e.preventDefault();
     showToast('ESP32 configuration saved');
+    // Add actual ESP configuration logic here
   };
+
+  const handleLogout = () => {
+    signOut();
+  };
+
+  // Prevent rendering if user is not loaded
+  if (!user) {
+    return <div>Loading...</div>;
+  }
 
   return (
     <div className="container mx-auto p-6 max-w-2xl space-y-8">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Settings</h1>
-        <Button variant="outline" className="gap-2">
+        <Button variant="outline" className="gap-2" onClick={handleLogout}>
           <LogOut className="h-4 w-4" /> Logout
         </Button>
       </div>
@@ -82,7 +117,7 @@ export default function SettingsPage() {
                     name="email"
                     type="email"
                     value={formData.email}
-                    onChange={handleInputChange}
+                    disabled // Typically, email is managed through Clerk
                   />
                 </div>
                 <Button type="submit" className="gap-2">
