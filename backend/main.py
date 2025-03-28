@@ -1,5 +1,4 @@
 import os
-import uuid
 import json
 import logging
 from datetime import datetime
@@ -16,6 +15,7 @@ from supabase import create_client, Client
 
 # Gemini imports
 import google.generativeai as genai
+import uvicorn
 
 # Configure logging
 logging.basicConfig(
@@ -192,5 +192,5 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 # Run the app
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

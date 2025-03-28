@@ -1,13 +1,12 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { 
   LineChart, 
   Line, 
-  BarChart, 
-  Bar, 
   XAxis, 
   YAxis, 
   CartesianGrid, 
@@ -23,31 +22,153 @@ import {
   WifiOff
 } from 'lucide-react';
 
+// Supabase configuration
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+// Create Supabase client
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+interface SensorData {
+  id: number;
+  temperature: number;
+  humidity: number;
+  moisture: number;
+  motor_state: boolean;
+  inserted_at: string;
+}
+
+interface ChartData {
+  time: string;
+  temperature: number;
+}
+
 export default function DashboardPage() {
+  const [sensorData, setSensorData] = useState<SensorData[]>([]);
+  const [latestData, setLatestData] = useState<SensorData | null>(null);
   const [pumpStatus, setPumpStatus] = useState(false);
-  const isOnline = true; // Fixed value since setIsOnline was never used
+  const [isOnline, setIsOnline] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Mock data
-  const sensorData = [
-    { time: '00:00', moisture: 45, temp: 22, humidity: 65 },
-    { time: '04:00', moisture: 42, temp: 21, humidity: 68 },
-    { time: '08:00', moisture: 38, temp: 24, humidity: 62 },
-    { time: '12:00', moisture: 35, temp: 27, humidity: 58 },
-    { time: '16:00', moisture: 41, temp: 25, humidity: 63 },
-    { time: '20:00', moisture: 47, temp: 23, humidity: 67 },
-  ];
+  // Prepare data for charts using useMemo to optimize performance
+  const temperatureData = useMemo(() => {
+    return sensorData.map(data => ({
+      time: new Date(data.inserted_at).toLocaleTimeString([], { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      }),
+      
+      temperature: data.temperature
+    })).sort((a, b) => {
+      // Ensure data is sorted chronologically
+      const timeA = a.time.split(':').map(Number);
+      const timeB = b.time.split(':').map(Number);
+      return timeA[0] - timeB[0] || timeA[1] - timeB[1];
+    });
+  }, [sensorData]);
 
-  const pumpData = [
-    { day: 'Mon', duration: 15 },
-    { day: 'Tue', duration: 25 },
-    { day: 'Wed', duration: 20 },
-    { day: 'Thu', duration: 18 },
-    { day: 'Fri', duration: 22 },
-    { day: 'Sat', duration: 12 },
-    { day: 'Sun', duration: 8 },
-  ];
+  console.log(temperatureData);
+  // Fetch latest sensor data and setup real-time subscription
+  useEffect(() => {
+    const fetchLatestData = async () => {
+      try {
+        setLoading(true);
+        
+        // Fetch the most recent sensor data
+        const { data, error: fetchError } = await supabase
+          .from('sensordata')
+          .select('*')
+          .order('inserted_at', { ascending: false })
+          .limit(1)
+          .single();
 
-  
+        if (fetchError) throw fetchError;
+
+        if (data) {
+          setLatestData(data);
+          setPumpStatus(data.motor_state);
+          setIsOnline(true);
+        }
+
+        // Fetch historical data for charts (last 24 hours)
+        const { data: historicalData, error: historicalError } = await supabase
+          .from('sensordata')
+          .select('*')
+          .order('inserted_at', { ascending: true });
+
+        if (historicalError) throw historicalError;
+
+        setSensorData(historicalData || []);
+        setLoading(false);
+      } catch (err) {
+        console.error('Error fetching sensor data:', err);
+        setError(err instanceof Error ? err.message : 'An unknown error occurred');
+        setIsOnline(false);
+        setLoading(false);
+      }
+    };
+
+    // Initial fetch
+    fetchLatestData();
+
+    // Setup real-time subscription
+    const subscription = supabase
+      .channel('sensordata')
+      .on('postgres_changes', 
+        { event: 'INSERT', schema: 'public', table: 'sensordata' }, 
+        (payload) => {
+          const newData = payload.new as SensorData;
+          setLatestData(newData);
+          setPumpStatus(newData.motor_state);
+          setIsOnline(true);
+          
+          // Update historical data
+          setSensorData(prevData => {
+            const updatedData = [...prevData, newData];
+            // Keep only last 24 hours of data
+            const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            return updatedData.filter(item => 
+              new Date(item.inserted_at) >= twentyFourHoursAgo
+            );
+          });
+        }
+      )
+      .subscribe();
+
+    // Cleanup subscription
+    return () => {
+      supabase.removeChannel(subscription);
+    };
+  }, []);
+
+  // Handle pump status change
+  const handlePumpStatusChange = async (newStatus: boolean) => {
+    try {
+      // You would typically call a backend function to actually control the pump
+      setPumpStatus(newStatus);
+    } catch (err) {
+      console.error('Error changing pump status:', err);
+    }
+  };
+
+  // Render loading state
+  if (loading) {
+    return (
+      <div className="container mx-auto p-6 text-center">
+        <p>Loading dashboard...</p>
+      </div>
+    );
+  }
+
+  // Render error state
+  if (error) {
+    return (
+      <div className="container mx-auto p-6 text-red-500">
+        <p>Error: {error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -72,7 +193,9 @@ export default function DashboardPage() {
             <Thermometer className="w-5 h-5 text-red-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">24°C</div>
+            <div className="text-3xl font-bold">
+              {latestData ? `${latestData.temperature.toFixed(1)}°C` : 'N/A'}
+            </div>
             <div className="text-sm text-gray-500 mt-1">±0.5°C accuracy</div>
           </CardContent>
         </Card>
@@ -85,7 +208,9 @@ export default function DashboardPage() {
             <Droplets className="w-5 h-5 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">65%</div>
+            <div className="text-3xl font-bold">
+              {latestData ? `${latestData.humidity.toFixed(1)}%` : 'N/A'}
+            </div>
             <div className="text-sm text-gray-500 mt-1">Indoor equivalent</div>
           </CardContent>
         </Card>
@@ -98,7 +223,9 @@ export default function DashboardPage() {
             <Leaf className="w-5 h-5 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">42%</div>
+            <div className="text-3xl font-bold">
+              {latestData ? `${latestData.moisture.toFixed(1)}%` : 'N/A'}
+            </div>
             <div className="text-sm text-gray-500 mt-1">Field capacity</div>
           </CardContent>
         </Card>
@@ -117,7 +244,7 @@ export default function DashboardPage() {
               </div>
               <Switch
                 checked={pumpStatus}
-                onCheckedChange={setPumpStatus}
+                onCheckedChange={handlePumpStatusChange}
                 disabled={!isOnline}
               />
             </div>
@@ -131,41 +258,36 @@ export default function DashboardPage() {
       {/* Graphical Data Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="p-4">
-          <h2 className="text-xl font-semibold mb-4">Moisture Trends</h2>
+          <h2 className="text-xl font-semibold mb-4">Temperature Trends (24h)</h2>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={sensorData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="time" />
-                <YAxis unit="%" />
-                <Tooltip />
-                <Line 
-                  type="monotone" 
-                  dataKey="moisture" 
-                  stroke="#10b981" 
-                  strokeWidth={2}
-                />
-              </LineChart>
+              {temperatureData.length > 0 ? (
+                <LineChart data={temperatureData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="time" />
+                  <YAxis unit="°C" />
+                  <Tooltip />
+                  <Line 
+                    type="monotone" 
+                    dataKey="temperature" 
+                    stroke="#ef4444" 
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-500">
+                  No temperature data available
+                </div>
+              )}
             </ResponsiveContainer>
           </div>
         </Card>
 
         <Card className="p-4">
-          <h2 className="text-xl font-semibold mb-4">Pump Usage History</h2>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={pumpData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="day" />
-                <YAxis unit="min" />
-                <Tooltip />
-                <Bar 
-                  dataKey="duration" 
-                  fill="#3b82f6" 
-                  radius={[4, 4, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
+          <h2 className="text-xl font-semibold mb-4">Daily Metrics</h2>
+          <div className="h-64 flex items-center justify-center text-gray-500">
+            Aggregate data coming soon
           </div>
         </Card>
       </div>
