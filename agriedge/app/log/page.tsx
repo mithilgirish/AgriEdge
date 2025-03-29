@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Download, Search, Calendar as CalendarIcon } from 'lucide-react';
 import { format } from "date-fns";
@@ -143,12 +142,17 @@ export default function LogPage() {
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
-            <Calendar
-              mode="single"
-              selected={date}
-              onSelect={setDate}
-              initialFocus
-            />
+            <div className="flex items-center justify-between p-4">
+              <Input
+                type="date"
+                value={date ? format(date, 'yyyy-MM-dd') : ''}
+                onChange={(e) => setDate(new Date(e.target.value))}
+                className="w-full"
+              />
+              <Button variant="outline" onClick={() => setDate(undefined)}>
+                Clear
+              </Button>
+            </div>
           </PopoverContent>
         </Popover>
 

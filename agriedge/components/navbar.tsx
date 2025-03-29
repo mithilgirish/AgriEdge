@@ -18,7 +18,6 @@ export default function Navbar() {
 
   const links = [
     { href: '/dashboard', label: 'Dashboard' },
-    { href: '/control', label: 'Control' },
     { href: '/log', label: 'Logs' },
     {href: '/chatbot', label:"ChatBot"},
   ];

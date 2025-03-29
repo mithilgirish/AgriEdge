@@ -38,10 +38,7 @@ interface SensorData {
   inserted_at: string;
 }
 
-interface ChartData {
-  time: string;
-  temperature: number;
-}
+
 
 export default function DashboardPage() {
   const [sensorData, setSensorData] = useState<SensorData[]>([]);
@@ -58,7 +55,6 @@ export default function DashboardPage() {
         hour: '2-digit', 
         minute: '2-digit' 
       }),
-      
       temperature: data.temperature
     })).sort((a, b) => {
       // Ensure data is sorted chronologically
@@ -68,7 +64,21 @@ export default function DashboardPage() {
     });
   }, [sensorData]);
 
-  console.log(temperatureData);
+  const humidityData = useMemo(() => {
+    return sensorData.map(data => ({
+      time: new Date(data.inserted_at).toLocaleTimeString([], { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      }),
+      humidity: data.humidity // Fixed: now using actual humidity data
+    })).sort((a, b) => {
+      // Ensure data is sorted chronologically
+      const timeA = a.time.split(':').map(Number);
+      const timeB = b.time.split(':').map(Number);
+      return timeA[0] - timeB[0] || timeA[1] - timeB[1];
+    });
+  }, [sensorData]);
+
   // Fetch latest sensor data and setup real-time subscription
   useEffect(() => {
     const fetchLatestData = async () => {
@@ -92,9 +102,11 @@ export default function DashboardPage() {
         }
 
         // Fetch historical data for charts (last 24 hours)
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
         const { data: historicalData, error: historicalError } = await supabase
           .from('sensordata')
           .select('*')
+          .gte('inserted_at', twentyFourHoursAgo.toISOString())
           .order('inserted_at', { ascending: true });
 
         if (historicalError) throw historicalError;
@@ -282,14 +294,39 @@ export default function DashboardPage() {
               )}
             </ResponsiveContainer>
           </div>
+          
         </Card>
 
         <Card className="p-4">
-          <h2 className="text-xl font-semibold mb-4">Daily Metrics</h2>
-          <div className="h-64 flex items-center justify-center text-gray-500">
-            Aggregate data coming soon
+          <h2 className="text-xl font-semibold mb-4">Humidity Trends (24h)</h2>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              {humidityData.length > 0 ? (
+                <LineChart data={humidityData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="time" />
+                  <YAxis unit="%" />
+                  <Tooltip />
+                  <Line 
+                    type="monotone" 
+                    dataKey="humidity" 
+                    stroke="#3b82f6" 
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-500">
+                  No humidity data available
+                </div>
+              )}
+            </ResponsiveContainer>
           </div>
         </Card>
+
+        
+
+        
       </div>
     </div>
   );
