@@ -65,14 +65,27 @@ app.add_middleware(
 # Request models
 class QuestionRequest(BaseModel):
     question: str = Field(..., description="User's question")
-    # Removed session_id from the request model
+    language: str = Field("english", description="Language for response")
 
-def generate_nlp_response(question: str, sensor_data: dict = None) -> str:
+# Map of language codes to Gemini language instructions
+LANGUAGE_MAP = {
+    "english": "Respond in English.",
+    "hindi": "Respond in Hindi (हिन्दी).",
+    "tamil": "Respond in Tamil (தமிழ்).",
+    "telugu": "Respond in Telugu (తెలుగు).",
+    "malayalam": "Respond in Malayalam (മലയാളം).",
+    "punjabi": "Respond in Punjabi (ਪੰਜਾਬੀ).",
+    "marathi": "Respond in Marathi (मराठी).",
+    "kannada": "Respond in Kannada (ಕನ್ನಡ)."
+}
+
+def generate_nlp_response(question: str, language: str = "english", sensor_data: dict = None) -> str:
     """
     Generate a natural language response using Gemini.
     
     Args:
         question (str): User's question.
+        language (str): Language code for response.
         sensor_data (Optional[dict]): Optional sensor data context.
     
     Returns:
@@ -83,8 +96,12 @@ def generate_nlp_response(question: str, sensor_data: dict = None) -> str:
         if sensor_data is None:
             sensor_data = {}
         
+        # Get language instruction
+        language_instruction = LANGUAGE_MAP.get(language.lower(), LANGUAGE_MAP["english"])
+        
         # Improved logging for debugging
         logger.info(f"Generating response for question: {question}")
+        logger.info(f"Language: {language}")
         logger.info(f"Sensor Data Context: {json.dumps(sensor_data, indent=2)}")
         
         # Prepare the prompt with context and guidelines
@@ -101,6 +118,7 @@ def generate_nlp_response(question: str, sensor_data: dict = None) -> str:
         - If the question is about sensor data, use the provided context.
         - If no specific context is available, provide general agricultural knowledge.
         - Support your answers with practical insights.
+        - {language_instruction}
         """
         
         # Generate response using Gemini
@@ -168,19 +186,31 @@ def fetch_sensor_data(time_period: str = "24h") -> dict:
 @app.post("/ask")
 async def ask_question(request: QuestionRequest):
     """
-    Process a user's question and generate an AI response.
+    Process a user's question and generate an AI response in the specified language.
     """
     try:
         # Fetch sensor data for additional context
         sensor_data = fetch_sensor_data()
         
-        # Generate the AI response using Gemini
-        answer = generate_nlp_response(request.question, sensor_data)
+        # Generate the AI response using Gemini in the requested language
+        answer = generate_nlp_response(
+            question=request.question,
+            language=request.language,
+            sensor_data=sensor_data
+        )
         
         return {"answer": answer}
     except Exception as e:
         logger.error(f"Question processing error: {e}")
         raise HTTPException(status_code=500, detail="Failed to process question")
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """
+    Health check endpoint to verify API is running.
+    """
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 # Custom error handler for validation errors
 @app.exception_handler(RequestValidationError)
