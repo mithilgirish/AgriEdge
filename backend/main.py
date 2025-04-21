@@ -56,7 +56,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",  # Next.js default dev server
-        "https://agri-edge.vercel.app"  # Your production domain
+        "https://agri-edge.vercel.app",  # Your production domain
+        "https://agriedge.onrender.com"  # Add the backend domain itself
     ],
     allow_credentials=True,
     allow_methods=["*"],
