@@ -16,6 +16,7 @@ from supabase import create_client, Client
 # Gemini imports
 import google.generativeai as genai
 import uvicorn
+import pandas as pd
 
 # Configure logging
 logging.basicConfig(
@@ -62,6 +63,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Define fallback dataset (sample sensor data)
+SAMPLE_SENSOR_DATA = [
+    {"ID": 1, "Temperature": 37.8, "Humidity": 87.8, "Moisture": 37.45, "Motor_State": "ON"},
+    {"ID": 2, "Temperature": 37.9, "Humidity": 87.6, "Moisture": 95.07, "Motor_State": "ON"},
+    {"ID": 3, "Temperature": 38.1, "Humidity": 87.0, "Moisture": 73.2, "Motor_State": "OFF"},
+    {"ID": 4, "Temperature": 38.3, "Humidity": 86.6, "Moisture": 59.87, "Motor_State": "OFF"},
+    {"ID": 5, "Temperature": 38.4, "Humidity": 85.7, "Moisture": 15.6, "Motor_State": "OFF"},
+    {"ID": 6, "Temperature": 38.6, "Humidity": 85.4, "Moisture": 15.6, "Motor_State": "OFF"},
+    {"ID": 7, "Temperature": 38.8, "Humidity": 84.3, "Moisture": 5.81, "Motor_State": "OFF"},
+    {"ID": 8, "Temperature": 39.0, "Humidity": 83.4, "Moisture": 86.62, "Motor_State": "ON"},
+    {"ID": 9, "Temperature": 39.2, "Humidity": 82.5, "Moisture": 60.11, "Motor_State": "OFF"},
+    {"ID": 10, "Temperature": 39.4, "Humidity": 82.2, "Moisture": 70.81, "Motor_State": "OFF"},
+    {"ID": 11, "Temperature": 39.7, "Humidity": 81.4, "Moisture": 2.06, "Motor_State": "ON"},
+    {"ID": 12, "Temperature": 39.9, "Humidity": 78.4, "Moisture": 96.99, "Motor_State": "OFF"},
+    {"ID": 13, "Temperature": 40.2, "Humidity": 79.6, "Moisture": 83.24, "Motor_State": "ON"},
+    {"ID": 14, "Temperature": 40.5, "Humidity": 79.3, "Moisture": 21.23, "Motor_State": "OFF"},
+    {"ID": 15, "Temperature": 41.0, "Humidity": 79.4, "Moisture": 18.18, "Motor_State": "ON"},
+    {"ID": 16, "Temperature": 41.5, "Humidity": 76.3, "Moisture": 18.34, "Motor_State": "OFF"},
+    {"ID": 17, "Temperature": 41.7, "Humidity": 78.6, "Moisture": 30.42, "Motor_State": "OFF"},
+    {"ID": 18, "Temperature": 42.3, "Humidity": 76.9, "Moisture": 52.48, "Motor_State": "ON"},
+    {"ID": 19, "Temperature": 42.6, "Humidity": 80.9, "Moisture": 43.19, "Motor_State": "ON"},
+    {"ID": 20, "Temperature": 43.2, "Humidity": 83.1, "Moisture": 29.12, "Motor_State": "ON"}
+]
+
 # Request models
 class QuestionRequest(BaseModel):
     question: str = Field(..., description="User's question")
@@ -79,6 +104,51 @@ LANGUAGE_MAP = {
     "kannada": "Respond in Kannada (ಕನ್ನಡ)."
 }
 
+def analyze_sample_data():
+    """
+    Analyze the sample sensor data to provide useful insights.
+    
+    Returns:
+        dict: Aggregated sensor data insights.
+    """
+    df = pd.DataFrame(SAMPLE_SENSOR_DATA)
+    
+    # Calculate aggregated statistics
+    analysis = {
+        "avg_temperature": round(df["Temperature"].mean(), 2),
+        "avg_humidity": round(df["Humidity"].mean(), 2),
+        "avg_moisture": round(df["Moisture"].mean(), 2),
+        "max_temperature": round(df["Temperature"].max(), 2),
+        "min_temperature": round(df["Temperature"].min(), 2),
+        "max_humidity": round(df["Humidity"].max(), 2),
+        "min_humidity": round(df["Humidity"].min(), 2),
+        "max_moisture": round(df["Moisture"].max(), 2),
+        "min_moisture": round(df["Moisture"].min(), 2),
+        "motor_on_percentage": round((df["Motor_State"] == "ON").mean() * 100, 2),
+        "latest_reading": datetime.now().isoformat(),
+        "sample_data": True,
+        "total_records": len(df)
+    }
+    
+    # Analyze patterns
+    temp_trend = "increasing" if df["Temperature"].iloc[-1] > df["Temperature"].iloc[0] else "decreasing"
+    humidity_trend = "increasing" if df["Humidity"].iloc[-1] > df["Humidity"].iloc[0] else "decreasing"
+    moisture_trend = "fluctuating" # Moisture tends to fluctuate in the sample data
+    
+    analysis["temperature_trend"] = temp_trend
+    analysis["humidity_trend"] = humidity_trend 
+    analysis["moisture_trend"] = moisture_trend
+    
+    # Determine moisture conditions
+    if analysis["avg_moisture"] < 20:
+        analysis["moisture_condition"] = "dry"
+    elif analysis["avg_moisture"] < 50:
+        analysis["moisture_condition"] = "moderate"
+    else:
+        analysis["moisture_condition"] = "moist"
+    
+    return analysis
+
 def generate_nlp_response(question: str, language: str = "english", sensor_data: dict = None) -> str:
     """
     Generate a natural language response using Gemini.
@@ -93,8 +163,13 @@ def generate_nlp_response(question: str, language: str = "english", sensor_data:
     """
     try:
         # Validate sensor data loading
-        if sensor_data is None:
-            sensor_data = {}
+        if sensor_data is None or not sensor_data:
+            logger.info("No sensor data available from database. Using sample data.")
+            sensor_data = analyze_sample_data()
+            
+        # Add raw sample data for reference
+        if "sample_data" in sensor_data and sensor_data["sample_data"]:
+            sensor_data["raw_readings"] = SAMPLE_SENSOR_DATA[-5:]  # Add the last 5 readings
         
         # Get language instruction
         language_instruction = LANGUAGE_MAP.get(language.lower(), LANGUAGE_MAP["english"])
@@ -109,15 +184,19 @@ def generate_nlp_response(question: str, language: str = "english", sensor_data:
         You are an agricultural AI assistant. Provide helpful, informative, and practical advice about farming, agriculture, and related topics.
 
         Sensor Data Context:
-        {json.dumps(sensor_data, indent=2) if sensor_data else "No sensor data available."}
+        {json.dumps(sensor_data, indent=2)}
 
         Question: {question}
 
         Guidelines:
         - Give clear, concise, and actionable responses.
-        - If the question is about sensor data, use the provided context.
-        - If no specific context is available, provide general agricultural knowledge.
-        - Support your answers with practical insights.
+        - Use the provided sensor data context to inform your answers.
+        - Provide specific insights based on temperature, humidity, and moisture readings.
+        - Consider the trends in the data to make recommendations.
+        - If the soil moisture is low (< 20%), suggest irrigation may be needed.
+        - If temperature is trending high with low moisture, warn about potential drought stress.
+        - If humidity is high (> 85%) with high moisture, mention potential fungal disease risk.
+        - Support your answers with practical insights from the data.
         - {language_instruction}
         """
         
@@ -163,8 +242,8 @@ def fetch_sensor_data(time_period: str = "24h") -> dict:
         ).filter("inserted_at", "gte", f"NOW() - INTERVAL '{interval}'").execute()
         
         # Validate query results
-        if not query.data:
-            logger.warning(f"No sensor data found for interval: {interval}")
+        if not query.data or len(query.data) == 0 or query.data[0].get("avg_temperature") is None:
+            logger.warning(f"No sensor data found for interval: {interval}. Using sample data instead.")
             return {}
         
         data = query.data[0]
@@ -211,6 +290,18 @@ async def health_check():
     Health check endpoint to verify API is running.
     """
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+# Sample data access endpoint
+@app.get("/sample-data")
+async def get_sample_data():
+    """
+    Return the sample sensor data for analysis.
+    """
+    analysis = analyze_sample_data()
+    return {
+        "sample_data": SAMPLE_SENSOR_DATA,
+        "analysis": analysis
+    }
 
 # Custom error handler for validation errors
 @app.exception_handler(RequestValidationError)
